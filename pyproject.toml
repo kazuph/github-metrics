@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "github-metrics"
+version = "0.1.0"
+description = "GitHub contribution metrics reporter"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "kazuph" }
+]
+dependencies = [
+    "requests>=2.28.0",
+    "rich>=13.0.0",
+    "click>=8.0.0",
+]
+
+[project.scripts]
+create-report = "github_metrics.cli:create_report"
+github-metrics = "github_metrics.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/github_metrics"]
