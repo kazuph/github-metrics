@@ -103,6 +103,28 @@ def print_comparison_report(all_stats: list[dict], username: str) -> None:
             line += f"{graph} ({total:>3})  "
         console.print(Text(line, style="green"))
 
+    # Top repositories comparison
+    console.print()
+    repo_table = Table(title="Top Repositories by Year", show_lines=True)
+    repo_table.add_column("Rank", style="dim", justify="center")
+    for year in years:
+        repo_table.add_column(str(year), style="cyan")
+
+    max_repos = 5
+    for i in range(max_repos):
+        row = [f"#{i+1}"]
+        for stats in all_stats:
+            repos = stats.get("top_repositories", [])
+            if i < len(repos):
+                repo = repos[i]
+                name = repo["name"].split("/")[-1]  # Short name
+                row.append(f"{name} ({repo['commits']})")
+            else:
+                row.append("-")
+        repo_table.add_row(*row)
+
+    console.print(repo_table)
+
 
 def print_single_report(stats: dict, username: str) -> None:
     """Print a formatted report for a single year."""
