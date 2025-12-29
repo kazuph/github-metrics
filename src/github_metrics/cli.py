@@ -41,8 +41,10 @@ def create_contribution_graph(daily_contributions: list[dict], year: int) -> str
         month_name = datetime.strptime(month_key, "%Y-%m").strftime("%b")
         counts = months[month_key]
         graph = "".join(intensity(c) for c in counts)
+        # Pad to 31 days for consistent width
+        graph = graph.ljust(31, " ")
         total = sum(counts)
-        lines.append(f"{month_name}: {graph} ({total})")
+        lines.append(f"{month_name}: {graph} ({total:>3})")
 
     return "\n".join(lines)
 
@@ -59,21 +61,39 @@ def print_year_report(stats: dict, username: str) -> None:
         expand=False
     ))
 
-    # Summary table
-    summary = Table(show_header=False, box=None, padding=(0, 2))
-    summary.add_column("Metric", style="dim")
-    summary.add_column("Value", style="bold green")
+    # Total contributions breakdown
+    console.print()
+    console.print(f"[bold]Total Contributions: {stats['total_contributions']:,}[/bold]")
+    console.print(f"  [green]Public:  {stats['public_contributions']:,}[/green]")
+    console.print(f"  [yellow]Private: {stats['private_contributions']:,}[/yellow]")
 
-    summary.add_row("Total Contributions", f"{stats['total_contributions']:,}")
-    summary.add_row("Commits", f"{stats['commits']:,}")
-    summary.add_row("Pull Requests", f"{stats['pull_requests']:,}")
-    summary.add_row("Issues", f"{stats['issues']:,}")
-    summary.add_row("Code Reviews", f"{stats['reviews']:,}")
-    summary.add_row("Repositories", f"{stats['repositories_contributed']:,}")
-    summary.add_row("Current Streak", f"{stats['current_streak']} days")
-    summary.add_row("Longest Streak", f"{stats['max_streak']} days")
+    # Public contributions breakdown
+    console.print()
+    console.print("[bold]Public Breakdown[/bold]")
+    public_table = Table(show_header=False, box=None, padding=(0, 2))
+    public_table.add_column("Metric", style="dim")
+    public_table.add_column("Value", style="green")
 
-    console.print(summary)
+    public_table.add_row("  Commits", f"{stats['commits']:,}")
+    public_table.add_row("  Pull Requests", f"{stats['pull_requests']:,}")
+    public_table.add_row("  Issues", f"{stats['issues']:,}")
+    public_table.add_row("  Code Reviews", f"{stats['reviews']:,}")
+    public_table.add_row("  New Repositories", f"{stats['new_repositories']:,}")
+
+    console.print(public_table)
+
+    # Activity stats
+    console.print()
+    console.print("[bold]Activity[/bold]")
+    activity_table = Table(show_header=False, box=None, padding=(0, 2))
+    activity_table.add_column("Metric", style="dim")
+    activity_table.add_column("Value", style="cyan")
+
+    activity_table.add_row("  Repositories Contributed", f"{stats['repositories_contributed']:,}")
+    activity_table.add_row("  Current Streak", f"{stats['current_streak']} days")
+    activity_table.add_row("  Longest Streak", f"{stats['max_streak']} days")
+
+    console.print(activity_table)
 
     # Contribution graph
     if stats["daily_contributions"]:

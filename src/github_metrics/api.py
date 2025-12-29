@@ -85,6 +85,8 @@ class GitHubAPI:
                     totalIssueContributions
                     totalPullRequestContributions
                     totalPullRequestReviewContributions
+                    totalRepositoryContributions
+                    restrictedContributionsCount
                     totalRepositoriesWithContributedCommits
                     contributionCalendar {
                         totalContributions
@@ -168,13 +170,26 @@ class GitHubAPI:
             reverse=True
         )[:10]
 
+        # Calculate public contributions
+        public_contributions = (
+            collection["totalCommitContributions"]
+            + collection["totalIssueContributions"]
+            + collection["totalPullRequestContributions"]
+            + collection["totalPullRequestReviewContributions"]
+            + collection["totalRepositoryContributions"]
+        )
+        private_contributions = collection["restrictedContributionsCount"]
+
         return {
             "year": year,
             "total_contributions": calendar["totalContributions"],
+            "public_contributions": public_contributions,
+            "private_contributions": private_contributions,
             "commits": collection["totalCommitContributions"],
             "issues": collection["totalIssueContributions"],
             "pull_requests": collection["totalPullRequestContributions"],
             "reviews": collection["totalPullRequestReviewContributions"],
+            "new_repositories": collection["totalRepositoryContributions"],
             "repositories_contributed": collection["totalRepositoriesWithContributedCommits"],
             "current_streak": current_streak,
             "max_streak": max_streak,
