@@ -14,18 +14,8 @@ from .api import GitHubAPI, get_github_token, get_username
 console = Console()
 
 
-def create_contribution_graph(daily_contributions: list[dict], year: int) -> str:
-    """Create ASCII contribution graph."""
-    # Group by month
-    months = {}
-    for day in daily_contributions:
-        date = datetime.strptime(day["date"], "%Y-%m-%d")
-        month_key = date.strftime("%Y-%m")
-        if month_key not in months:
-            months[month_key] = []
-        months[month_key].append(day["contributionCount"])
-
-    # Simple intensity mapping
+def get_month_graph(daily_contributions: list[dict], month: int) -> tuple[str, int]:
+    """Get graph string and total for a specific month."""
     def intensity(count: int) -> str:
         if count == 0:
             return "░"
@@ -36,21 +26,86 @@ def create_contribution_graph(daily_contributions: list[dict], year: int) -> str
         else:
             return "█"
 
-    lines = []
-    for month_key in sorted(months.keys()):
-        month_name = datetime.strptime(month_key, "%Y-%m").strftime("%b")
-        counts = months[month_key]
-        graph = "".join(intensity(c) for c in counts)
-        # Pad to 31 days for consistent width
-        graph = graph.ljust(31, " ")
-        total = sum(counts)
-        lines.append(f"{month_name}: {graph} ({total:>3})")
+    counts = []
+    for day in daily_contributions:
+        date = datetime.strptime(day["date"], "%Y-%m-%d")
+        if date.month == month:
+            counts.append(day["contributionCount"])
 
-    return "\n".join(lines)
+    if not counts:
+        return "░" * 31, 0
+
+    graph = "".join(intensity(c) for c in counts)
+    graph = graph.ljust(31, " ")
+    return graph, sum(counts)
 
 
-def print_year_report(stats: dict, username: str) -> None:
-    """Print a formatted report for a year."""
+def print_comparison_report(all_stats: list[dict], username: str) -> None:
+    """Print a comparison report for multiple years."""
+    years = [s["year"] for s in all_stats]
+
+    # Header
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]GitHub Metrics Comparison[/bold cyan]\n"
+        f"[dim]@{username} - {', '.join(map(str, years))}[/dim]",
+        expand=False
+    ))
+
+    # Summary comparison table
+    console.print()
+    summary_table = Table(title="Year-over-Year Comparison", show_lines=True)
+    summary_table.add_column("Metric", style="dim")
+    for year in years:
+        summary_table.add_column(str(year), justify="right", style="cyan")
+
+    metrics = [
+        ("Total", "total_contributions"),
+        ("  Public", "public_contributions"),
+        ("  Private", "private_contributions"),
+        ("Commits", "commits"),
+        ("Pull Requests", "pull_requests"),
+        ("Issues", "issues"),
+        ("Code Reviews", "reviews"),
+        ("New Repos", "new_repositories"),
+        ("Longest Streak", "max_streak"),
+    ]
+
+    for label, key in metrics:
+        row = [label]
+        for stats in all_stats:
+            value = stats.get(key, 0)
+            if key == "max_streak":
+                row.append(f"{value} days")
+            else:
+                row.append(f"{value:,}")
+        summary_table.add_row(*row)
+
+    console.print(summary_table)
+
+    # Side-by-side monthly graphs
+    console.print()
+    console.print("[bold]Monthly Activity Comparison[/bold]")
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    # Header row
+    header = "     "
+    for stats in all_stats:
+        header += f"  {stats['year']}                                "
+    console.print(header)
+
+    for month_idx, month_name in enumerate(month_names, 1):
+        line = f"{month_name}: "
+        for stats in all_stats:
+            graph, total = get_month_graph(stats.get("daily_contributions", []), month_idx)
+            line += f"{graph} ({total:>3})  "
+        console.print(Text(line, style="green"))
+
+
+def print_single_report(stats: dict, username: str) -> None:
+    """Print a formatted report for a single year."""
     year = stats["year"]
 
     # Header
@@ -96,14 +151,20 @@ def print_year_report(stats: dict, username: str) -> None:
     console.print(activity_table)
 
     # Contribution graph
-    if stats["daily_contributions"]:
+    if stats.get("daily_contributions"):
         console.print()
         console.print("[bold]Monthly Activity[/bold]")
-        graph = create_contribution_graph(stats["daily_contributions"], year)
-        console.print(Text(graph, style="green"))
+
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+        for month_idx, month_name in enumerate(month_names, 1):
+            graph, total = get_month_graph(stats["daily_contributions"], month_idx)
+            if total > 0 or month_idx <= datetime.now().month:
+                console.print(Text(f"{month_name}: {graph} ({total:>3})", style="green"))
 
     # Top repositories
-    if stats["top_repositories"]:
+    if stats.get("top_repositories"):
         console.print()
         repo_table = Table(title="Top Repositories", show_lines=False)
         repo_table.add_column("Repository", style="cyan")
@@ -122,11 +183,15 @@ def print_year_report(stats: dict, username: str) -> None:
 
 
 @click.command()
-@click.option("--year", "-y", multiple=True, type=int, help="Year(s) to report (can specify multiple)")
+@click.argument("years", nargs=-1, type=int)
+@click.option("--year", "-y", multiple=True, type=int, help="Year(s) to report (legacy, use positional args)")
 @click.option("--username", "-u", help="GitHub username (defaults to authenticated user)")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
-def create_report(year: tuple[int, ...], username: str | None, output_json: bool) -> None:
-    """Generate GitHub contribution metrics report."""
+def create_report(years: tuple[int, ...], year: tuple[int, ...], username: str | None, output_json: bool) -> None:
+    """Generate GitHub contribution metrics report.
+
+    Usage: create-report 2024 2025
+    """
     try:
         token = get_github_token()
         api = GitHubAPI(token)
@@ -134,25 +199,35 @@ def create_report(year: tuple[int, ...], username: str | None, output_json: bool
         if not username:
             username = get_username()
 
-        years = list(year) if year else [datetime.now().year]
+        # Combine positional args and --year options
+        all_years = list(years) + list(year)
+        if not all_years:
+            all_years = [datetime.now().year]
+        all_years = sorted(set(all_years))
 
         if output_json:
             import json
             results = []
-            for y in years:
+            for y in all_years:
                 stats = api.get_user_stats(username, y)
-                # Remove daily_contributions for cleaner JSON
                 stats.pop("daily_contributions", None)
                 results.append(stats)
             console.print_json(json.dumps(results, indent=2))
         else:
             console.print(f"[dim]Fetching metrics for @{username}...[/dim]")
-            for y in sorted(years):
+
+            all_stats = []
+            for y in all_years:
                 try:
                     stats = api.get_user_stats(username, y)
-                    print_year_report(stats, username)
+                    all_stats.append(stats)
                 except Exception as e:
                     console.print(f"[red]Error fetching {y}: {e}[/red]")
+
+            if len(all_stats) == 1:
+                print_single_report(all_stats[0], username)
+            elif len(all_stats) > 1:
+                print_comparison_report(all_stats, username)
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
